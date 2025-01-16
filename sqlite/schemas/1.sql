@@ -12,3 +12,10 @@ CREATE TABLE IF NOT EXISTS actions (
     user_id INTEGER,
     FOREIGN KEY (user_id) REFERENCES users (telegram_id)
 );
+
+CREATE TABLE IF NOT EXISTS stats (
+    correct_num INT,
+    incorrect_num INT,
+    user_id INTEGER,
+    FOREIGN KEY (user_id) REFERENCES users (telegram_id)
+);

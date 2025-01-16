@@ -63,7 +63,8 @@ async def start_command(message: Message):
     telegram_id = message.from_user.id
     conn = db_connector.get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users WHERE telegram_id = ?", (telegram_id,))
+    cursor.execute("SELECT * FROM users "
+                   "WHERE telegram_id = ?", (telegram_id,))
     user = cursor.fetchone()
     if user:
         await message.answer("Вы уже зарегистрированы! Используйте /check_sql для проверки запросов.",
@@ -79,7 +80,8 @@ async def register_command(message: Message, state: FSMContext):
     telegram_id = message.from_user.id
     conn = db_connector.get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users WHERE telegram_id = ?", (telegram_id,))
+    cursor.execute("SELECT * FROM users "
+                   "WHERE telegram_id = ?", (telegram_id,))
     user = cursor.fetchone()
     if user:
         await message.answer("Вы уже зарегистрированы!")
@@ -112,8 +114,14 @@ async def process_patronymic(message: Message, state: FSMContext):
     conn = db_connector.get_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO users (name, surname, patronymic, telegram_id) VALUES (?, ?, ?, ?)",
+        "INSERT INTO users (name, surname, patronymic, telegram_id) "
+        "VALUES (?, ?, ?, ?)",
         (name, surname, patronymic, telegram_id)
+    )
+    cursor.execute(
+        "INSERT INTO stats (correct_num, incorrect_num, user_id) "
+        "VALUES (?, ?, ?)",
+        (0, 0, telegram_id)
     )
     conn.commit()
     await message.answer(f"Регистрация завершена! Добро пожаловать, {name}.")
@@ -121,20 +129,29 @@ async def process_patronymic(message: Message, state: FSMContext):
 
 
 @registration_router.message(F.text.startswith("/check_sql"))
-@registration_router.message(F.text == "Проверка SQL-запроса")
+@registration_router.message(F.text.startswith("Проверка SQL-запроса"))
 async def check_sql_command(message: Message):
     telegram_id = message.from_user.id
     conn = db_connector.get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users WHERE telegram_id = ?", (telegram_id,))
+    cursor.execute("SELECT * FROM users "
+                   "WHERE telegram_id = ?", (telegram_id,))
     sql_query = message.text[len("/check_sql "):].strip()
     if not sql_query:
         await message.answer("Пожалуйста, укажите SQL-запрос после команды, например: `/check_sql SELECT * FROM users`")
         return
     try:
         conn.execute(f"EXPLAIN {sql_query}")
+        cursor.execute("UPDATE stats "
+                       "SET correct_num = correct_num + 1 "
+                       "WHERE user_id = ?", (telegram_id,))
+        conn.commit()
         await message.answer("Ваш запрос корректен.")
     except OperationalError as e:
+        cursor.execute("UPDATE stats "
+                       "SET incorrect_num = incorrect_num + 1 "
+                       "WHERE user_id = ?", (telegram_id,))
+        conn.commit()
         await message.answer(f"Ошибка в запросе: {e}")
 
 
