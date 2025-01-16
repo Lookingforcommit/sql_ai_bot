@@ -8,7 +8,7 @@ from sqlite3 import OperationalError
 from src.db_management import DBConnector
 from src.configs_management import ConfigsManager
 from src.middlewares import RegistrationMiddleware, LoggingMiddleware
-
+from src.ai_management import AIManager
 
 db_connector = DBConnector()
 configs_manager = ConfigsManager()
@@ -153,6 +153,9 @@ async def check_sql_command(message: Message):
                        "WHERE user_id = ?", (telegram_id,))
         conn.commit()
         await message.answer(f"Ошибка в запросе: {e}")
+        ai_manager = AIManager()
+        help_message = await ai_manager.get_sql_error_help(sql_query, str(e))
+        await message.answer(f"Анализ ошибки:\n\n{help_message}")
 
 
 @registration_router.message(F.text)
