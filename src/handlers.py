@@ -24,11 +24,16 @@ class RegisterStates(StatesGroup):
     waiting_for_patronymic = State()
 
 
+class SQLDialogStates(StatesGroup):
+    in_conversation = State()
+
+
 async def set_commands():
     commands = [
         BotCommand(command="/start", description="Начать взаимодействие с ботом"),
         BotCommand(command="/register", description="Зарегистрироваться в системе"),
         BotCommand(command="/check_sql", description="Проверить корректность SQL-запроса"),
+        BotCommand(command="/quit", description="Завершить диалог с помощником"),
     ]
     await bot.set_my_commands(commands)
 
@@ -49,6 +54,16 @@ async def start_command(message: Message):
         await message.answer("Вы уже зарегистрированы! Используйте /check_sql для проверки запросов.")
     else:
         await message.answer("Добро пожаловать! Используйте /register для регистрации.")
+
+
+@router.message(F.text == "/quit")
+async def quit_conversation(message: Message, state: FSMContext):
+    current_state = await state.get_state()
+    if current_state == SQLDialogStates.in_conversation.state:
+        await state.clear()
+        await message.answer("Диалог с помощником завершен. Используйте /check_sql для новой проверки запроса.")
+    else:
+        await message.answer("Вы не находитесь в режиме диалога с помощником.")
 
 
 @dp.message(F.text == "/register")
@@ -98,7 +113,7 @@ async def process_patronymic(message: Message, state: FSMContext):
 
 
 @router.message(F.text.startswith("/check_sql"))
-async def check_sql_command(message: Message):
+async def check_sql_command(message: Message, state: FSMContext):
     telegram_id = message.from_user.id
     conn = db_connector.get_connection()
     cursor = conn.cursor()
@@ -117,6 +132,54 @@ async def check_sql_command(message: Message):
         ai_manager = AIManager()
         help_message = await ai_manager.get_sql_error_help(sql_query, str(e))
         await message.answer(f"Анализ ошибки:\n\n{help_message}")
+
+        # Сохраняем начальный контекст и переходим в режим диалога
+        await state.update_data(
+            initial_query=sql_query,
+            error_message=str(e),
+            message_history=[
+                {
+                    "role": "system",
+                    "content": "Вы - эксперт SQL, который помогает исправлять ошибки в запросах."
+                },
+                {
+                    "role": "user",
+                    "content": f"Запрос: {sql_query}\nОшибка: {str(e)}"
+                },
+                {
+                    "role": "assistant",
+                    "content": help_message
+                }
+            ]
+        )
+        await state.set_state(SQLDialogStates.in_conversation)
+        await message.answer(
+            "Теперь вы можете задавать дополнительные вопросы. Для завершения диалога используйте /quit")
+
+
+@router.message(SQLDialogStates.in_conversation)
+async def handle_sql_conversation(message: Message, state: FSMContext):
+    if message.text.startswith('/'):
+        return
+
+    ai_manager = AIManager()
+    state_data = await state.get_data()
+    message_history = state_data.get('message_history', [])
+
+    # Добавляем новый вопрос пользователя в историю
+    message_history.append({"role": "user", "content": message.text})
+
+    try:
+        # Получаем ответ от GigaChat
+        response_text = await ai_manager.continue_dialogue(message_history)
+
+        # Сохраняем ответ в историю
+        message_history.append({"role": "assistant", "content": response_text})
+        await state.update_data(message_history=message_history)
+
+        await message.answer(response_text)
+    except Exception as e:
+        await message.answer(f"Произошла ошибка при обработке вашего вопроса: {e}")
 
 
 @router.message(F.text)
