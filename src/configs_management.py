@@ -1,6 +1,7 @@
 import os
-import dotenv
 from typing import Optional
+
+import dotenv
 
 
 class ConfigsManager:
@@ -16,6 +17,7 @@ class ConfigsManager:
         self.bot_token: Optional[str] = None
         self.db_path: Optional[str] = None
         self.migrations_dir: Optional[str] = None
+        self.gigachat_api_key: Optional[str] = None
         self._load_configs()
 
     def _load_configs(self):
@@ -23,3 +25,4 @@ class ConfigsManager:
         self.bot_token = os.getenv("BOT_TOKEN")
         self.db_path = os.getenv("DB_PATH")
         self.migrations_dir = os.getenv("MIGRATIONS_DIR")
+        self.gigachat_api_key = os.getenv("GIGACHAT_API_KEY")

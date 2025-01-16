@@ -1,14 +1,16 @@
+from sqlite3 import OperationalError
+from typing import List
+
 from aiogram import Bot, Dispatcher, Router, F
-from aiogram.types import Message, BotCommand, KeyboardButton, ReplyKeyboardMarkup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from sqlite3 import OperationalError
+from aiogram.types import Message, BotCommand, KeyboardButton, ReplyKeyboardMarkup
 
-from src.db_management import DBConnector
-from src.configs_management import ConfigsManager
-from src.middlewares import RegistrationMiddleware, LoggingMiddleware
 from src.ai_management import AIManager
+from src.configs_management import ConfigsManager
+from src.db_management import DBConnector
+from src.middlewares import RegistrationMiddleware, LoggingMiddleware
 
 db_connector = DBConnector()
 configs_manager = ConfigsManager()
@@ -35,7 +37,7 @@ async def set_commands():
         BotCommand(command="/start", description="Начать взаимодействие с ботом"),
         BotCommand(command="/register", description="Зарегистрироваться в системе"),
         BotCommand(command="/check_sql", description="Проверить корректность SQL-запроса"),
-        BotCommand(command="/menu", description="Вывод меню")
+        BotCommand(command="/menu", description="Вывод меню"),
         BotCommand(command="/quit", description="Завершить диалог с помощником"),
     ]
     await bot.set_my_commands(commands)
@@ -91,17 +93,16 @@ async def register_command(message: Message, state: FSMContext):
     if user:
         await message.answer("Вы уже зарегистрированы!")
         return
+    await message.answer("Введите вашу фамилию:")
+    await state.set_state(RegisterStates.waiting_for_surname)
+
+
+@router.message(RegisterStates.waiting_for_surname)
+async def process_surname(message: Message, state: FSMContext):
+    await state.update_data(surname=message.text)
     await message.answer("Введите ваше имя:")
     await state.set_state(RegisterStates.waiting_for_name)
 
-@router.message(F.text == "/quit")
-async def quit_conversation(message: Message, state: FSMContext):
-    current_state = await state.get_state()
-    if current_state == SQLDialogStates.in_conversation.state:
-        await state.clear()
-        await message.answer("Диалог с помощником завершен. Используйте /check_sql для новой проверки запроса.")
-    else:
-        await message.answer("Вы не находитесь в режиме диалога с помощником.")
 
 @router.message(RegisterStates.waiting_for_name)
 async def process_name(message: Message, state: FSMContext):
@@ -134,9 +135,27 @@ async def process_patronymic(message: Message, state: FSMContext):
     await state.clear()
 
 
+def init_message_history(sql_query: str, exception: Exception, help_message: str) -> List[dict]:
+    message_history = [
+        {
+            "role": "system",
+            "content": "Вы - эксперт SQL, который помогает исправлять ошибки в запросах."
+        },
+        {
+            "role": "user",
+            "content": f"Запрос: {sql_query}\nОшибка: {str(exception)}"
+        },
+        {
+            "role": "assistant",
+            "content": help_message
+        }
+    ]
+    return message_history
+
+
 @registration_router.message(F.text.startswith("/check_sql"))
 @registration_router.message(F.text.startswith("Проверка SQL-запроса"))
-async def check_sql_command(message: Message):
+async def check_sql_command(message: Message, state: FSMContext):
     telegram_id = message.from_user.id
     conn = db_connector.get_connection()
     cursor = conn.cursor()
@@ -162,49 +181,26 @@ async def check_sql_command(message: Message):
         ai_manager = AIManager()
         help_message = await ai_manager.get_sql_error_help(sql_query, str(e))
         await message.answer(f"Анализ ошибки:\n\n{help_message}")
-        await state.update_data(
-            initial_query=sql_query,
-            error_message=str(e),
-            message_history=[
-                {
-                    "role": "system",
-                    "content": "Вы - эксперт SQL, который помогает исправлять ошибки в запросах."
-                },
-                {
-                    "role": "user",
-                    "content": f"Запрос: {sql_query}\nОшибка: {str(e)}"
-                },
-                {
-                    "role": "assistant",
-                    "content": help_message
-                }
-            ]
-        )
+        await state.update_data(message_history=init_message_history(sql_query, e, help_message))
         await state.set_state(SQLDialogStates.in_conversation)
-        await message.answer(
-            "Теперь вы можете задавать дополнительные вопросы. Для завершения диалога используйте /quit")
+        await message.answer("Теперь вы можете задавать дополнительные вопросы. "
+                             "Для завершения диалога используйте /quit")
 
 
 @router.message(SQLDialogStates.in_conversation)
 async def handle_sql_conversation(message: Message, state: FSMContext):
-    if message.text.startswith('/'):
+    if message.text == "/quit":
+        await state.clear()
+        await message.answer("Диалог с помощником завершен. Используйте /check_sql для новой проверки запроса.")
         return
-
     ai_manager = AIManager()
     state_data = await state.get_data()
     message_history = state_data.get('message_history', [])
-
-    # Добавляем новый вопрос пользователя в историю
     message_history.append({"role": "user", "content": message.text})
-
     try:
-        # Получаем ответ от GigaChat
         response_text = await ai_manager.continue_dialogue(message_history)
-
-        # Сохраняем ответ в историю
         message_history.append({"role": "assistant", "content": response_text})
         await state.update_data(message_history=message_history)
-
         await message.answer(response_text)
     except Exception as e:
         await message.answer(f"Произошла ошибка при обработке вашего вопроса: {e}")

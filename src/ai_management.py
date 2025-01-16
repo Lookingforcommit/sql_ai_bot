@@ -1,8 +1,9 @@
-from langchain_gigachat import GigaChat
-from langchain.schema import SystemMessage, HumanMessage, AIMessage
-import os
 from typing import Optional, List, Dict
-from dotenv import load_dotenv
+
+from langchain.schema import SystemMessage, HumanMessage, AIMessage
+from langchain_gigachat import GigaChat
+
+from src.configs_management import ConfigsManager
 
 
 class AIManager:
@@ -19,14 +20,8 @@ class AIManager:
         self._initialize_chat()
 
     def _initialize_chat(self):
-        load_dotenv()
-        api_key = os.getenv("GIGACHAT_API_KEY")
-
-        if not api_key:
-            print("Warning: GIGACHAT_API_KEY not found in environment variables")
-            self.chat = None
-            return
-
+        configs_manager = ConfigsManager()
+        api_key = configs_manager.gigachat_api_key
         try:
             self.chat = GigaChat(
                 credentials=api_key,
@@ -36,7 +31,8 @@ class AIManager:
             print(f"Error initializing GigaChat: {e}")
             self.chat = None
 
-    def _convert_messages_to_langchain(self, messages: List[Dict[str, str]]) -> List:
+    @staticmethod
+    def _convert_messages_to_langchain(messages: List[Dict[str, str]]) -> List:
         converted_messages = []
         for message in messages:
             if message["role"] == "system":
@@ -50,7 +46,6 @@ class AIManager:
     async def get_sql_error_help(self, query: str, error_message: str) -> str:
         if not self.chat:
             return "Извините, сервис анализа ошибок временно недоступен."
-
         messages = [
             {
                 "role": "system",
@@ -65,7 +60,6 @@ class AIManager:
                 """
             }
         ]
-
         try:
             langchain_messages = self._convert_messages_to_langchain(messages)
             response = self.chat.invoke(langchain_messages)
@@ -76,7 +70,6 @@ class AIManager:
     async def continue_dialogue(self, message_history: List[Dict[str, str]]) -> str:
         if not self.chat:
             return "Извините, сервис временно недоступен."
-
         try:
             langchain_messages = self._convert_messages_to_langchain(message_history)
             response = self.chat.invoke(langchain_messages)

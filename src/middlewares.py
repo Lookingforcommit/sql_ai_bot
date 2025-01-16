@@ -1,6 +1,7 @@
-from aiogram.types import Message
-from aiogram import BaseMiddleware
 from typing import Callable, Dict, Any, Awaitable
+
+from aiogram import BaseMiddleware
+from aiogram.types import Message
 
 from src.db_management import DBConnector
 
@@ -30,7 +31,7 @@ class LoggingMiddleware(BaseMiddleware):
         self.db_connector = DBConnector()
 
     async def __call__(self, handler: Callable[[Message, Dict[str, Any]], Awaitable[Any]],
-                       event: Message,data: Dict[str, Any]):
+                       event: Message, data: Dict[str, Any]):
         telegram_id = event.from_user.id
         user_message = event.text
         if user_message:
