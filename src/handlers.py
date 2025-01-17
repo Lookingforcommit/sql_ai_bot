@@ -1,3 +1,4 @@
+import sqlite3
 from sqlite3 import OperationalError
 from typing import List
 
@@ -199,13 +200,16 @@ async def check_sql_command(message: Message, state: FSMContext):
         await message.answer("Пожалуйста, укажите SQL-запрос после команды, например: `/check_sql SELECT * FROM users`")
         return
     try:
+        conn = sqlite3.connect(":memory:")
         conn.execute(f"EXPLAIN {sql_query}")
         await on_correct_sql_query(cursor, telegram_id, conn, message)
     except OperationalError as e:
-        if "syntax error" not in str(e).lower():
-            await on_correct_sql_query(cursor, telegram_id, conn, message)
+        syntax_error_list = ["syntax error", "unrecognized token", "incomplete input"]
+        comparisons = [item in str(e).lower() for item in syntax_error_list]
+        if any(comparisons):
+            await on_incorrect_sql_command(cursor, telegram_id, conn, message, sql_query, e, state)
             return
-        await on_incorrect_sql_command(cursor, telegram_id, conn, message, sql_query, e, state)
+        await on_correct_sql_query(cursor, telegram_id, conn, message)
 
 
 @router.message(SQLDialogStates.in_conversation)

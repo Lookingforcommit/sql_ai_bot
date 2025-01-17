@@ -44,12 +44,8 @@ class StatsNotifier:
             id=f"stats_notifier_{telegram_id}",
             replace_existing=True,
         )
-        print(id(self.scheduler))
-        self.scheduler.print_jobs()
 
     def cancel_task_for_user(self, telegram_id: int):
-        print(id(self.scheduler))
-        self.scheduler.print_jobs()
         self.scheduler.remove_job(f"stats_notifier_{telegram_id}")
         conn = self.db_connector.get_connection()
         cursor = conn.cursor()
