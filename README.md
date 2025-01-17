@@ -154,6 +154,7 @@ project/
 ![Структура БД](https://github.com/user-attachments/assets/7796ea23-e3ed-44c3-a7fc-c30d80f642f1)
 
 # Блок-схема
+[sql_ai_bot.pdf](https://github.com/user-attachments/files/18455663/sql_ai_bot.pdf)
 
 
 
