@@ -6,16 +6,22 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE TABLE IF NOT EXISTS actions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
     message TEXT,
     timestamp DATETIME,
     user_id INTEGER,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     FOREIGN KEY (user_id) REFERENCES users (telegram_id)
 );
 
 CREATE TABLE IF NOT EXISTS stats (
-    correct_num INT,
-    incorrect_num INT,
-    user_id INTEGER,
+    correct_num INTEGER,
+    incorrect_num INTEGER,
+    user_id INTEGER PRIMARY KEY,
+    FOREIGN KEY (user_id) REFERENCES users (telegram_id)
+);
+
+CREATE TABLE IF NOT EXISTS scheduler (
+    interval_minutes INTEGER,
+    user_id INTEGER PRIMARY KEY,
     FOREIGN KEY (user_id) REFERENCES users (telegram_id)
 );
